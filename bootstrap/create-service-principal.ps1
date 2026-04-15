@@ -104,6 +104,14 @@ if ($StateStorageAccount) {
         --scope $storageId | Out-Null
 }
 
+# --- Assign Key Vault Secrets User on subscription ---
+Write-Host "Assigning Key Vault Secrets User role on subscription ..."
+az role assignment create `
+    --assignee-object-id $spObjectId `
+    --assignee-principal-type ServicePrincipal `
+    --role "Key Vault Secrets User" `
+    --scope "/subscriptions/$SubscriptionId" | Out-Null
+
 # --- Get tenant ID ---
 $tenantId = az account show --query tenantId -o tsv
 
