@@ -53,31 +53,32 @@ az ad sp create --id $appId | Out-Null
 $spObjectId = az ad sp show --id $appId --query id -o tsv
 Write-Host "Service principal object ID: $spObjectId"
 
-# --- Add federated credentials for GitHub Actions OIDC ---
-$environments = @("production", "staging", "dev")
+# --- Add federated credential for GitHub Actions OIDC ---
 $subjects = @(
-    "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main",
-    "repo:${GitHubOrg}/${GitHubRepo}:pull_request"
+    "repo:${GitHubOrg}/${GitHubRepo}:ref:refs/heads/main"
 )
-foreach ($env in $environments) {
-    $subjects += "repo:${GitHubOrg}/${GitHubRepo}:environment:${env}"
-}
 
-foreach ($subject in $subjects) {
-    $credName = ($subject -replace "[^a-zA-Z0-9]", "-").TrimEnd("-")
-    # Truncate to 120 chars (Azure limit)
-    if ($credName.Length -gt 120) { $credName = $credName.Substring(0, 120) }
+$tempFile = [System.IO.Path]::GetTempFileName()
+try {
+    foreach ($subject in $subjects) {
+        $credName = ($subject -replace "[^a-zA-Z0-9]", "-").TrimEnd("-")
+        # Truncate to 120 chars (Azure limit)
+        if ($credName.Length -gt 120) { $credName = $credName.Substring(0, 120) }
 
-    Write-Host "  Adding federated credential: $subject"
-    $body = @{
-        name        = $credName
-        issuer      = "https://token.actions.githubusercontent.com"
-        subject     = $subject
-        audiences   = @("api://AzureADTokenExchange")
-        description = "GitHub Actions OIDC - $subject"
-    } | ConvertTo-Json -Compress
+        Write-Host "  Adding federated credential: $subject"
+        $body = @{
+            name        = $credName
+            issuer      = "https://token.actions.githubusercontent.com"
+            subject     = $subject
+            audiences   = @("api://AzureADTokenExchange")
+            description = "GitHub Actions OIDC - $subject"
+        } | ConvertTo-Json
+        $body | Set-Content -Path $tempFile -Encoding utf8
 
-    az ad app federated-credential create --id $appId --parameters $body | Out-Null
+        az ad app federated-credential create --id $appId --parameters "@$tempFile" | Out-Null
+    }
+} finally {
+    Remove-Item $tempFile -ErrorAction SilentlyContinue
 }
 
 # --- Assign Contributor on subscription ---
